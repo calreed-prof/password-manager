@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import getpass
 
 # This is going to be the connection setup for the database
 conn = sqlite3.connect("password_manager.db")
@@ -10,11 +11,19 @@ c = conn.cursor()
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
+c.execute('''CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          username TEXT NOT NULL,
+          mstpassword TEXT NOT NULL
+          )''')
+
 c.execute('''Create TABLE IF NOT EXISTS passwords (
           id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          userid INTEGER NOT NULL,
           website TEXT NOT NULL,
           username TEXT NOT NULL,
-          password TEXT NOT NULL
+          password TEXT NOT NULL,
+          FOREIGN KEY (userid) REFERENCES users(id)
           )''')
 conn.commit()
 
@@ -30,44 +39,54 @@ def login_menu():
         clear_screen()
         login_menu()
 
+def main_menu(userid):
+    option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
+
 def signin():
     # Signin Menu
     clear_screen()
-    print("Welcome Back!\n(Press 1 to return to the main menu): ")
-    pass_key = input("Enter your password to continue: ")
-    hashed_pass_key = hashlib.sha256(pass_key.encode()).hexdigest()
-    try:
-        c.execute("SELECT password FROM passwords WHERE website = 'Master Password'")
-        result = c.fetchone()[0]
-        if hashed_pass_key == result:
-            print("Welcome Back!")
+    backout = input("Welcome Back!\n(Press 1 to return to the main menu): ")
+    if backout == 1:
+        login_menu()
+    else:
+        pass
+    username = input("Please enter your username: ")
+    password = getpass.getpass("Please enter your password: ")
+    hashed_pass_key = hashlib.sha256(password.encode()).hexdigest()
 
-        elif pass_key == "1":
-            login_menu()
+    # This will be placed in a try command to stop errors from crashing program
+    try:
+        c.execute(f"SELECT id, password FROM users Where username = ?", (username))
+        result = c.fetchone()
+        if result and hashed_pass_key == result[1]:
+            print("Welcome Back! Press enter to continue...")
+            input()
+            main_menu(result[0])
         else:
-            print("Invalid password, please try again.Press enter to continue...")
+            print("Incorrect password or username, please try again...")
             input()
             signin()
     except:
-        print("Invalid password, please try again.Press enter to continue...")
+        print("Incorrect password or username, please try again...")
         input()
         signin()
 
 def create_account():
     # Create Account Menu
     clear_screen()
-    pass_key = input("Enter your Master Password (This should be different than all other passwords): ")
-    re_enter_pass_key = input("Please re-enter your Master Password: ")
-    if pass_key == re_enter_pass_key:
-        hashed_pass_key = hashlib.sha256(pass_key.encode()).hexdigest()
-        c.execute(f"INSERT INTO passwords (website, username, password) VALUES (?, ?, ?)", ("Master Password", "Master Password", hashed_pass_key))
-        conn.commit()
-        print(f"Your Master Password has been set!\nPlease press enter to continue...")
-        input()
-        signin()
-    else:
-        print("Your Master Password does not match, please try again.\nPress enter to continue")
+    username = input("Please enter username: ")
+    if username == c.execute("SELECT username FROM users"):
+        print("Username already taken, please try again")
         input()
         create_account()
+    else:
+        mstpassword = input("Please enter password: ")
+        hashed_mst_passkey = hashlib.sha256(mstpassword.encode()).hexdigest()
+        c.execute(f"INSERT INTO users (username, mstpassword) VALUES (?, ?, ?)", (username, hashed_mst_passkey))
+        conn.commit()
+        print("Your Account has been Successfully Created! Press enter to continue...")
+        input()
+        signin()
+        
 
 login_menu()
