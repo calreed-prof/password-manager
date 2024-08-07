@@ -2,6 +2,9 @@ import os
 import sqlite3
 import hashlib
 import getpass
+import bcrypt
+from cryptography.fernet import Fernet
+import base64
 
 # This is going to be the connection setup for the database
 conn = sqlite3.connect("password_manager.db")
@@ -23,9 +26,40 @@ c.execute('''Create TABLE IF NOT EXISTS passwords (
           website TEXT NOT NULL,
           username TEXT NOT NULL,
           password TEXT NOT NULL,
+          salt TEXT NOT NULL,
           FOREIGN KEY (userid) REFERENCES users(id)
           )''')
 conn.commit()
+
+# This will hash the password using bcrypt
+def hash_password(password):
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(password.encode(), salt)
+    return hashed_password
+
+# bcrypt has a nice feature where it can automically check the password for us
+def check_password(password, hashed_password):
+    return bcrypt.checkpw(password.encode(), hashed_password)
+
+def derive_key(password: str, salt: bytes) -> bytes:
+    """Derives a key from the password using PBKDF2."""
+    kdf = hashlib.pbkdf2_hmac(
+        'sha256',  # The hash digest algorithm
+        password.encode(),  # Convert the password to bytes
+        salt,  # Provide the salt
+        100000  # It is recommended to use at least 100,000 iterations of SHA-256
+    )
+    return base64.urlsafe_b64encode(kdf)
+
+# This will encrypt the password using Fernet
+def encrypt_password(password, key):
+    f = Fernet(key)
+    return f.encrypt(password.encode())
+
+# This will decrypt the password using Fernet
+def decrypt_password(encrypted_password, key):
+    f = Fernet(key)
+    return f.decrypt(encrypted_password).decode()
 
 #Starting Menu
 def login_menu():
@@ -39,8 +73,44 @@ def login_menu():
         clear_screen()
         login_menu()
 
-def main_menu(userid):
+def view_passwords(userid):
+    c.execute("SELECT * FROM passwords WHERE userid = ?", (userid))
+    results = c.fetchall()
+    for row in results:
+        print(row)
+
+def add_password(userid, master_password):
+    website = input("Please enter the website: ")
+    username = input("Please enter the username: ")
+    password = input("Please enter the password: ")
+
+    salt = os.urandom(16)  # This should be stored securely and associated with the user
+    key = derive_key(master_password, salt)
+    
+    # Encrypt the password
+    encrypted_password = encrypt_password(password, key)
+    
+    c.execute("INSERT INTO passwords (userid, website, username, password, salt) VALUES (?, ?, ?, ?, ?)", (userid, website, username, encrypted_password, salt))
+    conn.commit()
+    print("Password has been added successfully! Press enter to continue...")
+    input()
+
+
+
+def main_menu(userid, derived_key):
     option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
+    if option == "1":
+        view_passwords(userid)
+    elif option == "2":
+        add_password(userid, derived_key)
+    elif option == "3":
+        delete_password(userid)
+    elif option == "4":
+        update_password(userid)
+    else:
+        print("Invalid input")
+        clear_screen()
+        main_menu(userid)
 
 def signin():
     # Signin Menu
@@ -59,9 +129,11 @@ def signin():
         c.execute(f"SELECT id, password FROM users Where username = ?", (username))
         result = c.fetchone()
         if result and hashed_pass_key == result[1]:
+            salt = os.urandom(16)
+            derived_key = derive_key(password, salt)
             print("Welcome Back! Press enter to continue...")
             input()
-            main_menu(result[0])
+            main_menu(result[0], derived_key)
         else:
             print("Incorrect password or username, please try again...")
             input()
@@ -81,12 +153,11 @@ def create_account():
         create_account()
     else:
         mstpassword = input("Please enter password: ")
-        hashed_mst_passkey = hashlib.sha256(mstpassword.encode()).hexdigest()
+        hashed_mst_passkey = hash_password(mstpassword)
         c.execute(f"INSERT INTO users (username, mstpassword) VALUES (?, ?, ?)", (username, hashed_mst_passkey))
         conn.commit()
         print("Your Account has been Successfully Created! Press enter to continue...")
         input()
         signin()
-        
 
 login_menu()
