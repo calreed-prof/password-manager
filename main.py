@@ -26,15 +26,13 @@ c.execute('''Create TABLE IF NOT EXISTS passwords (
           website TEXT NOT NULL,
           username TEXT NOT NULL,
           password TEXT NOT NULL,
-          salt TEXT NOT NULL,
           FOREIGN KEY (userid) REFERENCES users(id)
           )''')
 conn.commit()
 
 # This will hash the password using bcrypt
 def hash_password(password):
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(password.encode(), salt)
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
     return hashed_password
 
 # bcrypt has a nice feature where it can automically check the password for us
@@ -79,18 +77,15 @@ def view_passwords(userid):
     for row in results:
         print(row)
 
-def add_password(userid, master_password):
+def add_password(userid, key):
     website = input("Please enter the website: ")
     username = input("Please enter the username: ")
     password = input("Please enter the password: ")
-
-    salt = os.urandom(16)  # This should be stored securely and associated with the user
-    key = derive_key(master_password, salt)
     
     # Encrypt the password
     encrypted_password = encrypt_password(password, key)
     
-    c.execute("INSERT INTO passwords (userid, website, username, password, salt) VALUES (?, ?, ?, ?, ?)", (userid, website, username, encrypted_password, salt))
+    c.execute("INSERT INTO passwords (userid, website, username, password, salt) VALUES (?, ?, ?, ?, ?)", (userid, website, username, encrypted_password))
     conn.commit()
     print("Password has been added successfully! Press enter to continue...")
     input()
@@ -98,6 +93,7 @@ def add_password(userid, master_password):
 
 
 def main_menu(userid, derived_key):
+    clear_screen()
     option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
     if option == "1":
         view_passwords(userid)
@@ -115,18 +111,18 @@ def main_menu(userid, derived_key):
 def signin():
     # Signin Menu
     clear_screen()
-    backout = input("Welcome Back!\n(Press 1 to return to the main menu): ")
-    if backout == 1:
+    print("Welcome Back! (Enter 1 to return to the main menu): ")
+    username = input("Please enter your username: ")
+    if username == 1:
         login_menu()
     else:
         pass
-    username = input("Please enter your username: ")
-    password = getpass.getpass("Please enter your password: ")
-    hashed_pass_key = hashlib.sha256(password.encode()).hexdigest()
+    password = input("Please enter your password: ")
+    hashed_pass_key = hash_password(password)
 
     # This will be placed in a try command to stop errors from crashing program
     try:
-        c.execute(f"SELECT id, password FROM users Where username = ?", (username))
+        c.execute("SELECT id, mstpassword FROM users WHERE username = ?", (username,))
         result = c.fetchone()
         if result and hashed_pass_key == result[1]:
             salt = os.urandom(16)
@@ -154,7 +150,7 @@ def create_account():
     else:
         mstpassword = input("Please enter password: ")
         hashed_mst_passkey = hash_password(mstpassword)
-        c.execute(f"INSERT INTO users (username, mstpassword) VALUES (?, ?, ?)", (username, hashed_mst_passkey))
+        c.execute(f"INSERT INTO users (username, mstpassword) VALUES (?, ?)", (username, hashed_mst_passkey))
         conn.commit()
         print("Your Account has been Successfully Created! Press enter to continue...")
         input()
