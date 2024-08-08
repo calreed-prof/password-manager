@@ -74,7 +74,7 @@ def login_menu():
         login_menu()
 
 def view_passwords(userid, key):
-    c.execute("SELECT * FROM passwords WHERE userid = ?", (userid))
+    c.execute("SELECT website, username, password FROM passwords WHERE userid = ?", (userid,))
     results = c.fetchall()
 
     decrypted_data = []
@@ -85,10 +85,18 @@ def view_passwords(userid, key):
 
     headers = ["Website", "Username", "Password"]
 
-    print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
+    if decrypted_data == []:
+        input("No Passwords Saved! Add one First")
+        main_menu()
+    else:
+        print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
+        input("Press Enter to continue...")
+        main_menu()
 
 
 def add_password(userid, key):
+    clear_screen()
+    print("ADD A PASSWORD")
     website = input("Please enter the website: ")
     username = input("Please enter the username: ")
     password = input("Please enter the password: ")
@@ -96,33 +104,49 @@ def add_password(userid, key):
     # Encrypt the password
     encrypted_password = encrypt_password(password, key)
     
-    c.execute("INSERT INTO passwords (userid, website, username, password, salt) VALUES (?, ?, ?, ?, ?)", (userid, website, username, encrypted_password))
+    c.execute("INSERT INTO passwords (userid, website, username, password) VALUES (?, ?, ?, ?)", (userid, website, username, encrypted_password))
     conn.commit()
     print("Password has been added successfully! Press enter to continue...")
     input()
+    main_menu()
 
+def delete_password(userid):
+    todo = todo
 
+def update_password(userid):
+    todo = todo
 
 def main_menu(userid, password):
     try:
         c.execute("SELECT salt FROM users WHERE id = ?", (userid,))
-        salt = c.fetchone()
-        derived_key = derive_key(password, salt)
+        result = c.fetchone()
+
+        if result:
+            salt = result[0]
+            derived_key = derive_key(password, salt)
+        else:
+            print("Error: Could not retrieve salt for the user.")
+            return
+
     except Exception as e:
         print("Error Code is: ", e)
+        return
     
     clear_screen()
-    option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
+    option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password\n5. Sign Out\n\n> ")
     if option == "1":
-        view_passwords(userid)
+        view_passwords(userid, derived_key)
     elif option == "2":
         add_password(userid, derived_key)
     elif option == "3":
         delete_password(userid)
     elif option == "4":
         update_password(userid)
+    elif option == "5":
+        login_menu()
+        return
     else:
-        print("Invalid input")
+        input("Invalid input")
         clear_screen()
         main_menu(userid)
 
