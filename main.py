@@ -5,6 +5,7 @@ import getpass
 import bcrypt
 from cryptography.fernet import Fernet
 import base64
+from tabulate import tabulate
 
 # This is going to be the connection setup for the database
 conn = sqlite3.connect("password_manager.db")
@@ -17,7 +18,8 @@ def clear_screen():
 c.execute('''CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
           username TEXT NOT NULL,
-          mstpassword TEXT NOT NULL
+          mstpassword TEXT NOT NULL,
+          salt TEXT NOT NULL
           )''')
 
 c.execute('''Create TABLE IF NOT EXISTS passwords (
@@ -71,11 +73,20 @@ def login_menu():
         clear_screen()
         login_menu()
 
-def view_passwords(userid):
+def view_passwords(userid, key):
     c.execute("SELECT * FROM passwords WHERE userid = ?", (userid))
     results = c.fetchall()
+
+    decrypted_data = []
     for row in results:
-        print(row)
+        website, username, password = row
+        decrypted_password = decrypt_password(password, key)
+        decrypted_data.append([website, username, decrypted_password])
+
+    headers = ["Website", "Username", "Password"]
+
+    print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
+
 
 def add_password(userid, key):
     website = input("Please enter the website: ")
@@ -92,7 +103,9 @@ def add_password(userid, key):
 
 
 
-def main_menu(userid, derived_key):
+def main_menu(userid, password):
+    salt = c.execute("SELECT salt FROM users WHERE id = ?", (userid))
+    derived_key = derive_key(password, salt)
     clear_screen()
     option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
     if option == "1":
@@ -125,11 +138,9 @@ def signin():
         c.execute("SELECT id, mstpassword FROM users WHERE username = ?", (username,))
         result = c.fetchone()
         if result and hashed_pass_key == result[1]:
-            salt = os.urandom(16)
-            derived_key = derive_key(password, salt)
             print("Welcome Back! Press enter to continue...")
             input()
-            main_menu(result[0], derived_key)
+            main_menu(result[0], password)
         else:
             print("Incorrect password or username, please try again...")
             input()
@@ -149,8 +160,9 @@ def create_account():
         create_account()
     else:
         mstpassword = input("Please enter password: ")
+        salt = os.urandom(16)
         hashed_mst_passkey = hash_password(mstpassword)
-        c.execute(f"INSERT INTO users (username, mstpassword) VALUES (?, ?)", (username, hashed_mst_passkey))
+        c.execute(f"INSERT INTO users (username, mstpassword, salt) VALUES (?, ?)", (username, hashed_mst_passkey, salt))
         conn.commit()
         print("Your Account has been Successfully Created! Press enter to continue...")
         input()
