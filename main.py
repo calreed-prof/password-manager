@@ -104,8 +104,13 @@ def add_password(userid, key):
 
 
 def main_menu(userid, password):
-    salt = c.execute("SELECT salt FROM users WHERE id = ?", (userid))
-    derived_key = derive_key(password, salt)
+    try:
+        c.execute("SELECT salt FROM users WHERE id = ?", (userid,))
+        salt = c.fetchone()
+        derived_key = derive_key(password, salt)
+    except Exception as e:
+        print("Error Code is: ", e)
+    
     clear_screen()
     option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password")
     if option == "1":
@@ -145,10 +150,20 @@ def signin():
             print("Incorrect password or username, please try again...")
             input()
             signin()
-    except:
+    except Exception as e:
+        print(f"Error Code is: ", e)
+        input()
+        signin()
+
+    if result and hashed_pass_key == result[1]:
+        print("Welcome Back! Press enter to continue...")
+        input()
+        main_menu(result[0], password)
+    else:
         print("Incorrect password or username, please try again...")
         input()
         signin()
+
 
 def create_account():
     # Create Account Menu
@@ -162,7 +177,7 @@ def create_account():
         mstpassword = input("Please enter password: ")
         salt = os.urandom(16)
         hashed_mst_passkey = hash_password(mstpassword)
-        c.execute(f"INSERT INTO users (username, mstpassword, salt) VALUES (?, ?)", (username, hashed_mst_passkey, salt))
+        c.execute(f"INSERT INTO users (username, mstpassword, salt) VALUES (?, ?, ?)", (username, hashed_mst_passkey, salt))
         conn.commit()
         print("Your Account has been Successfully Created! Press enter to continue...")
         input()
