@@ -6,6 +6,7 @@ import bcrypt
 from cryptography.fernet import Fernet
 import base64
 from tabulate import tabulate
+import time
 
 # This is going to be the connection setup for the database
 conn = sqlite3.connect("password_manager.db")
@@ -63,6 +64,7 @@ def decrypt_password(encrypted_password, key):
 
 #Starting Menu
 def login_menu():
+    clear_screen()
     create_or_signin = input(f"Welcome to your password manager!\nPlease press 1 to signin, or 2 to create an account: ")
     if create_or_signin == "1":
         signin()
@@ -73,7 +75,7 @@ def login_menu():
         clear_screen()
         login_menu()
 
-def view_passwords(userid, key):
+def view_passwords(userid, key, mstpassword):
     c.execute("SELECT website, username, password FROM passwords WHERE userid = ?", (userid,))
     results = c.fetchall()
 
@@ -90,9 +92,10 @@ def view_passwords(userid, key):
         main_menu()
     else:
         print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
-        main_menu()
+        input("Press Enter when ready to continue...")
+        main_menu(userid, mstpassword)
 
-def add_password(userid, key):
+def add_password(userid, key, mstpassword):
     clear_screen()
     print("ADD A PASSWORD")
     website = input("Please enter the website: ")
@@ -106,9 +109,9 @@ def add_password(userid, key):
     conn.commit()
     print("Password has been added successfully! Press enter to continue...")
     input()
-    main_menu()
+    main_menu(userid, mstpassword)
 
-def delete_password(userid, key):
+def delete_password(userid, key, mstpassword):
     c.execute("SELECT id, website, username, password FROM passwords WHERE userid = ?", (userid,))
     results = c.fetchall()
 
@@ -123,14 +126,57 @@ def delete_password(userid, key):
     if decrypted_data == []:
         input("No Passwords Saved! Add one First")
         input()
-        main_menu()
+        main_menu(userid, mstpassword)
     else:
         print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
-        delete_choice = input("""Enter ID of password you would like to delete, enter "Exit" to go back.: """)
-        c.execute(f"DELETE FROM passwords WHERE id = ?", (delete_choice,))
+        delete_choice = input("""Enter ID of password you would like to delete, enter "Exit" to go back: """).lower()
+        if delete_choice == "exit":
+            print("Goodbye!")
+            time.sleep(1)
+            main_menu(userid, mstpassword)
+        else:
+            confirmation = input(f"Are you sure you want to delete {delete_choice}? (Type y/n)> ")
+            if confirmation == "y":
+                c.execute(f"DELETE FROM passwords WHERE id = ?", (delete_choice,))
+            else:
+                print("Goodbye!")
+                time.sleep(1)
+                main_menu(userid, mstpassword)
 
-def update_password(userid):
-    todo = todo
+def update_password(userid, key, mstpassword):
+    c.execute("SELECT id, website, username, password FROM passwords WHERE userid = ?", (userid,))
+    results = c.fetchall()
+
+    decrypted_data = []
+    for row in results:
+        id, website, username, password = row
+        decrypted_password = decrypt_password(password, key)
+        decrypted_data.append([id, website, username, decrypted_password])
+
+    headers = ["ID", "Website", "Username", "Password"]
+
+    if decrypted_data == []:
+        input("No Passwords Saved! Add one First")
+        input()
+        main_menu(userid, mstpassword)
+    else:
+        print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
+        id_choice = input("""Enter ID of password you would like to update, enter "Exit" to go back: """).lower()
+        if id_choice == "exit":
+            print("Goodbye!")
+            time.sleep(1)
+            main_menu(userid, mstpassword)
+        else:
+            new_choice = input("What would you like to update this password too? > ")
+            confirmation = input(f"Are you sure you want to update {id_choice}'s password to {new_choice}? (Type y/n)> ")
+            if confirmation == "y":
+                c.execute(f"UPDATE passwords SET password = ? WHERE id = ?", (new_choice, id_choice))
+                input("Success! Press enter to continue...")
+                main_menu(userid, mstpassword)
+            else:
+                print("Goodbye!")
+                time.sleep(1)
+                main_menu(userid, mstpassword)
 
 def main_menu(userid, password):
     try:
@@ -151,37 +197,51 @@ def main_menu(userid, password):
     clear_screen()
     option = input(f"Please select an option\n1. View Saved Passwords\n2. Add Password\n3. Delete Saved Password\n4. Update Saved Password\n5. Sign Out\n\n> ")
     if option == "1":
-        view_passwords(userid, derived_key)
+        view_passwords(userid, derived_key, password)
     elif option == "2":
-        add_password(userid, derived_key)
+        add_password(userid, derived_key, password)
     elif option == "3":
-        delete_password(userid, derived_key)
+        delete_password(userid, derived_key, password)
     elif option == "4":
-        update_password(userid)
+        update_password(userid, derived_key, password)
     elif option == "5":
         login_menu()
         return
     else:
         input("Invalid input")
         clear_screen()
-        main_menu(userid)
+        main_menu(userid, password)
 
 def signin():
     # Signin Menu
     clear_screen()
     print("Welcome Back! (Enter 1 to return to the main menu): ")
     username = input("Please enter your username: ")
-    if username == 1:
-        login_menu()
-    else:
-        pass
-    password = input("Please enter your password: ")
-    hashed_pass_key = hash_password(password)
 
-    # This will be placed in a try command to stop errors from crashing program
-    try:
-        c.execute("SELECT id, mstpassword FROM users WHERE username = ?", (username,))
-        result = c.fetchone()
+    c.execute("SELECT username FROM users WHERE username = ?", (username,))
+    useresult = c.fetchone()
+
+    if username == useresult:
+        password = input("Please enter your password: ")
+        hashed_pass_key = hash_password(password)
+
+        # This will be placed in a try command to stop errors from crashing program
+        try:
+            c.execute("SELECT id, mstpassword FROM users WHERE username = ?", (username,))
+            result = c.fetchone()
+            if result and hashed_pass_key == result[1]:
+                print("Welcome Back! Press enter to continue...")
+                input()
+                main_menu(result[0], password)
+            else:
+                print("Incorrect password or username, please try again...")
+                input()
+                signin()
+        except Exception as e:
+            print(f"Error Code is: ", e)
+            input()
+            signin()
+
         if result and hashed_pass_key == result[1]:
             print("Welcome Back! Press enter to continue...")
             input()
@@ -190,19 +250,10 @@ def signin():
             print("Incorrect password or username, please try again...")
             input()
             signin()
-    except Exception as e:
-        print(f"Error Code is: ", e)
-        input()
-        signin()
+    elif username == "1":
+        login_menu()
 
-    if result and hashed_pass_key == result[1]:
-        print("Welcome Back! Press enter to continue...")
-        input()
-        main_menu(result[0], password)
-    else:
-        print("Incorrect password or username, please try again...")
-        input()
-        signin()
+
 
 
 def create_account():
