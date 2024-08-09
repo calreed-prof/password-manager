@@ -90,9 +90,7 @@ def view_passwords(userid, key):
         main_menu()
     else:
         print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
-        input("Press Enter to continue...")
         main_menu()
-
 
 def add_password(userid, key):
     clear_screen()
@@ -110,8 +108,26 @@ def add_password(userid, key):
     input()
     main_menu()
 
-def delete_password(userid):
-    todo = todo
+def delete_password(userid, key):
+    c.execute("SELECT id, website, username, password FROM passwords WHERE userid = ?", (userid,))
+    results = c.fetchall()
+
+    decrypted_data = []
+    for row in results:
+        id, website, username, password = row
+        decrypted_password = decrypt_password(password, key)
+        decrypted_data.append([id, website, username, decrypted_password])
+
+    headers = ["ID", "Website", "Username", "Password"]
+
+    if decrypted_data == []:
+        input("No Passwords Saved! Add one First")
+        input()
+        main_menu()
+    else:
+        print(tabulate(decrypted_data, headers=headers, tablefmt="grid"))
+        delete_choice = input("""Enter ID of password you would like to delete, enter "Exit" to go back.: """)
+        c.execute(f"DELETE FROM passwords WHERE id = ?", (delete_choice,))
 
 def update_password(userid):
     todo = todo
@@ -139,7 +155,7 @@ def main_menu(userid, password):
     elif option == "2":
         add_password(userid, derived_key)
     elif option == "3":
-        delete_password(userid)
+        delete_password(userid, derived_key)
     elif option == "4":
         update_password(userid)
     elif option == "5":
